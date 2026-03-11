@@ -1,0 +1,18 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Local config / secrets
+config.ini
+
+# Data files
+*.jsonl
+*.csv
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
