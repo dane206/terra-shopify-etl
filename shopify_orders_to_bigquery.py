@@ -152,7 +152,8 @@ def stream_orders():
             eta = ((expected_count - order_count) / rate) if rate > 0 and expected_count > 0 else "unknown"
             eta_str = f"{int(eta/60)}m {int(eta%60)}s" if isinstance(eta, (int, float)) else eta
 
-            print(f"\r📄 Page {page_count}: {len(batch)} orders | Total: {order_count:,}/{expected_count:,} ({order_count/expected_count*100:.1f}%) | Rate: {rate:.1f} orders/sec | ETA: {eta_str}      ")
+            expected_pages = -(-expected_count // 250)
+            print(f"\r📄 Page {page_count}/{expected_pages}: {len(batch)} orders | Total: {order_count:,}/{expected_count:,} ({order_count/expected_count*100:.1f}%) | Rate: {rate:.1f} orders/sec | ETA: {eta_str}      ")
             last_update = current_time
 
         yield from batch
