@@ -21,12 +21,13 @@ from requests.adapters import HTTPAdapter, Retry
 from google.cloud import bigquery
 
 import configparser
-config = configparser.ConfigParser()
-config.read(os.path.join(os.path.dirname(__file__), "config.ini"))
+_cfg = configparser.ConfigParser()
+_cfg.read(os.path.join(os.path.dirname(__file__), "config.ini"))
+_shopify = _cfg["shopify"] if _cfg.has_section("shopify") else {}
 
-SHOPIFY_STORE = os.environ.get("SHOPIFY_STORE") or config["shopify"]["store"]
-ACCESS_TOKEN  = os.environ.get("SHOPIFY_ACCESS_TOKEN") or config["shopify"]["access_token"]
-API_VERSION   = config["shopify"].get("api_version", "2025-04")
+SHOPIFY_STORE = os.environ.get("SHOPIFY_STORE") or _shopify.get("store", "")
+ACCESS_TOKEN  = os.environ.get("SHOPIFY_ACCESS_TOKEN") or _shopify.get("access_token", "")
+API_VERSION   = os.environ.get("SHOPIFY_API_VERSION") or _shopify.get("api_version", "2025-04")
 BQ_PROJECT    = os.environ.get("BQ_PROJECT", "terra-analytics-prod")
 BQ_DATASET    = "sources"
 REST_URL      = f"https://{SHOPIFY_STORE}/admin/api/{API_VERSION}"
