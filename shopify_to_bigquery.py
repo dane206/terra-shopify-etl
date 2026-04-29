@@ -488,6 +488,7 @@ CUSTOMERS_SCHEMA = [
     SF("note","STRING"), SF("default_address1","STRING"), SF("default_city","STRING"),
     SF("default_province","STRING"), SF("default_province_code","STRING"),
     SF("default_country","STRING"), SF("default_country_code","STRING"), SF("default_zip","STRING"),
+    SF("_loaded_at","TIMESTAMP"),
 ]
 
 PRODUCTS_SCHEMA = [
@@ -495,6 +496,7 @@ PRODUCTS_SCHEMA = [
     SF("product_type","STRING"), SF("vendor","STRING"), SF("status","STRING"),
     SF("tags","STRING"), SF("created_at","TIMESTAMP"), SF("updated_at","TIMESTAMP"),
     SF("published_at","TIMESTAMP"), SF("body_html","STRING"),
+    SF("_loaded_at","TIMESTAMP"),
 ]
 
 VARIANTS_SCHEMA = [
@@ -505,6 +507,7 @@ VARIANTS_SCHEMA = [
     SF("inventory_management","STRING"), SF("inventory_policy","STRING"),
     SF("fulfillment_service","STRING"), SF("taxable","BOOLEAN"), SF("barcode","STRING"),
     SF("requires_shipping","BOOLEAN"), SF("created_at","TIMESTAMP"), SF("updated_at","TIMESTAMP"),
+    SF("_loaded_at","TIMESTAMP"),
 ]
 
 # ── REST paginator (customers, products, incremental orders) ──────────────────
@@ -525,7 +528,7 @@ def rest_paginate(endpoint, key, params=None):
         p = None
     print()
 
-def xform_customer(c):
+def xform_customer(c, loaded_at):
     da  = c.get("default_address") or {}
     emc = c.get("email_marketing_consent") or {}
     smc = c.get("sms_marketing_consent") or {}
@@ -540,19 +543,20 @@ def xform_customer(c):
         "default_address1": da.get("address1"), "default_city": da.get("city"),
         "default_province": da.get("province"), "default_province_code": da.get("province_code"),
         "default_country": da.get("country"), "default_country_code": da.get("country_code"),
-        "default_zip": da.get("zip"),
+        "default_zip": da.get("zip"), "_loaded_at": loaded_at,
     }
 
-def xform_product(p):
+def xform_product(p, loaded_at):
     return {
         "product_id": s(p.get("id")), "title": p.get("title"), "handle": p.get("handle"),
         "product_type": p.get("product_type"), "vendor": p.get("vendor"),
         "status": p.get("status"), "tags": p.get("tags"),
         "created_at": p.get("created_at"), "updated_at": p.get("updated_at"),
         "published_at": p.get("published_at"), "body_html": p.get("body_html"),
+        "_loaded_at": loaded_at,
     }
 
-def xform_variant(v, pid):
+def xform_variant(v, pid, loaded_at):
     return {
         "variant_id": s(v.get("id")), "product_id": s(pid), "title": v.get("title"),
         "option1": v.get("option1"), "option2": v.get("option2"), "option3": v.get("option3"),
@@ -565,6 +569,7 @@ def xform_variant(v, pid):
         "taxable": v.get("taxable"), "barcode": v.get("barcode"),
         "requires_shipping": v.get("requires_shipping"),
         "created_at": v.get("created_at"), "updated_at": v.get("updated_at"),
+        "_loaded_at": loaded_at,
     }
 
 # ── Runners ───────────────────────────────────────────────────────────────────
@@ -589,19 +594,21 @@ def run_refunds_bulk():
 
 def run_customers():
     print("\n👥 Fetching customers (REST)...")
-    rows = [xform_customer(c) for c in rest_paginate("customers.json", "customers")]
-    load_to_bq("shopify_customers", rows, CUSTOMERS_SCHEMA)
+    loaded_at = datetime.now(timezone.utc).isoformat()
+    rows = [xform_customer(c, loaded_at) for c in rest_paginate("customers.json", "customers")]
+    load_to_bq("shopify_customers", rows, CUSTOMERS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
 
 def run_products():
     print("\n🛍️  Fetching products (REST)...")
+    loaded_at = datetime.now(timezone.utc).isoformat()
     products, variants = [], []
     for p in rest_paginate("products.json", "products"):
-        products.append(xform_product(p))
+        products.append(xform_product(p, loaded_at))
         for v in (p.get("variants") or []):
-            variants.append(xform_variant(v, p.get("id")))
+            variants.append(xform_variant(v, p.get("id"), loaded_at))
     print(f"  products: {len(products):,} | variants: {len(variants):,}")
-    load_to_bq("shopify_products", products, PRODUCTS_SCHEMA)
-    load_to_bq("shopify_variants", variants, VARIANTS_SCHEMA)
+    load_to_bq("shopify_products", products, PRODUCTS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
+    load_to_bq("shopify_variants", variants, VARIANTS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
 
 def run_orders_incremental():
     since = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
