@@ -606,13 +606,16 @@ def run_products():
 def run_orders_incremental():
     since = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"\n📦 Incremental orders updated since {since}...")
-    orders = []
+    orders, line_items, discounts, refunds = [], [], [], []
     for o in rest_paginate("orders.json", "orders", {"status": "any", "updated_at_min": since}):
         ba, sa, c = o.get("billing_address") or {}, o.get("shipping_address") or {}, o.get("customer") or {}
+        order_id   = s(o.get("id"))
+        order_name = o.get("name")
+        created_at = o.get("created_at")
         orders.append({
-            "order_id": s(o.get("id")), "order_name": o.get("name"),
+            "order_id": order_id, "order_name": order_name,
             "order_number": o.get("order_number"), "confirmation_number": o.get("confirmation_number"),
-            "created_at": o.get("created_at"), "updated_at": o.get("updated_at"),
+            "created_at": created_at, "updated_at": o.get("updated_at"),
             "processed_at": o.get("processed_at"), "cancelled_at": o.get("cancelled_at"),
             "closed_at": o.get("closed_at"), "financial_status": o.get("financial_status"),
             "fulfillment_status": o.get("fulfillment_status"), "cancel_reason": o.get("cancel_reason"),
@@ -645,8 +648,45 @@ def run_orders_incremental():
             "shipping_zip": sa.get("zip"),
             "shipping_latitude": f(sa.get("latitude")), "shipping_longitude": f(sa.get("longitude")),
         })
+        for li in (o.get("line_items") or []):
+            line_items.append({
+                "line_item_id": s(li.get("id")), "order_id": order_id, "order_name": order_name,
+                "order_created_at": created_at, "product_id": s(li.get("product_id")),
+                "variant_id": s(li.get("variant_id")), "sku": li.get("sku"),
+                "title": li.get("title"), "variant_title": li.get("variant_title"),
+                "name": li.get("name"), "vendor": li.get("vendor"),
+                "quantity": li.get("quantity"), "price": f(li.get("price")),
+                "total_discount": f(li.get("total_discount")),
+                "gift_card": li.get("gift_card"), "taxable": li.get("taxable"),
+                "requires_shipping": li.get("requires_shipping"),
+            })
+        for da in (o.get("discount_applications") or []):
+            discounts.append({
+                "order_id": order_id, "order_name": order_name, "order_created_at": created_at,
+                "discount_type": da.get("type"), "code": da.get("code"), "title": da.get("title"),
+                "value": f(da.get("value")), "value_type": da.get("value_type"),
+                "allocation_method": da.get("allocation_method"),
+                "target_type": da.get("target_type"), "target_selection": da.get("target_selection"),
+            })
+        for r in (o.get("refunds") or []):
+            refund_id = s(r.get("id"))
+            for rli in (r.get("refund_line_items") or []):
+                refunds.append({
+                    "refund_id": refund_id, "order_id": order_id, "order_name": order_name,
+                    "created_at": r.get("created_at"), "note": r.get("note"),
+                    "refund_line_item_id": s(rli.get("id")),
+                    "line_item_id": s((rli.get("line_item") or {}).get("id") or rli.get("line_item_id")),
+                    "quantity": rli.get("quantity"), "restock_type": rli.get("restock_type"),
+                    "subtotal": f(rli.get("subtotal")), "total_tax": f(rli.get("total_tax")),
+                })
     if orders:
-        load_to_bq("shopify_orders", orders, ORDERS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
+        load_to_bq("shopify_orders",     orders,     ORDERS_SCHEMA,     bigquery.WriteDisposition.WRITE_APPEND)
+    if line_items:
+        load_to_bq("shopify_line_items", line_items, LINE_ITEMS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
+    if discounts:
+        load_to_bq("shopify_discounts",  discounts,  DISCOUNTS_SCHEMA,  bigquery.WriteDisposition.WRITE_APPEND)
+    if refunds:
+        load_to_bq("shopify_refunds",    refunds,    REFUNDS_SCHEMA,    bigquery.WriteDisposition.WRITE_APPEND)
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 def run_transactions(mode):
