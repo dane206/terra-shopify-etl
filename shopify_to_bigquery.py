@@ -592,17 +592,27 @@ def run_refunds_bulk():
     print(f"  refunds: {len(refunds):,}")
     load_to_bq("shopify_refunds", refunds, REFUNDS_SCHEMA)
 
-def run_customers():
-    print("\n👥 Fetching customers (REST)...")
+def run_customers(mode):
     loaded_at = datetime.now(timezone.utc).isoformat()
-    rows = [xform_customer(c, loaded_at) for c in rest_paginate("customers.json", "customers")]
+    params = {}
+    if mode == "incremental":
+        params["updated_at_min"] = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"\n👥 Fetching customers updated since {params['updated_at_min']}...")
+    else:
+        print("\n👥 Fetching all customers (backfill)...")
+    rows = [xform_customer(c, loaded_at) for c in rest_paginate("customers.json", "customers", params)]
     load_to_bq("shopify_customers", rows, CUSTOMERS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
 
-def run_products():
-    print("\n🛍️  Fetching products (REST)...")
+def run_products(mode):
     loaded_at = datetime.now(timezone.utc).isoformat()
+    params = {}
+    if mode == "incremental":
+        params["updated_at_min"] = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"\n🛍️  Fetching products updated since {params['updated_at_min']}...")
+    else:
+        print("\n🛍️  Fetching all products (backfill)...")
     products, variants = [], []
-    for p in rest_paginate("products.json", "products"):
+    for p in rest_paginate("products.json", "products", params):
         products.append(xform_product(p, loaded_at))
         for v in (p.get("variants") or []):
             variants.append(xform_variant(v, p.get("id"), loaded_at))
@@ -725,8 +735,8 @@ def main():
         run_refunds_bulk()
     else:
         run_orders_incremental()
-    run_customers()
-    run_products()
+    run_customers(args.mode)
+    run_products(args.mode)
     run_transactions(args.mode)
     run_discount_catalog()
     print("\n✅ ETL complete")
