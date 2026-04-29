@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# Terra Shopify ETL — Deploy to DEV
-# Usage: ./deploy.sh
-# After verifying in dev, change PROJECT to terra-analytics-prod and redeploy.
+# Terra Shopify ETL
+# Usage: ./deploy.sh dev | ./deploy.sh prod
 
 set -euo pipefail
 
-PROJECT="terra-analytics-dev"
+ENV="${1:-}"
+if [[ "$ENV" != "dev" && "$ENV" != "prod" ]]; then
+  echo "Usage: ./deploy.sh dev | ./deploy.sh prod"
+  exit 1
+fi
+
+PROJECT="terra-analytics-${ENV}"
 REGION="us-central1"
-JOB="terra-shopify-etl-dev"
+JOB="terra-shopify-etl-${ENV}"
 IMAGE="gcr.io/${PROJECT}/${JOB}:latest"
 SA="terra-etl-runner@${PROJECT}.iam.gserviceaccount.com"
 
-echo "🔨 Building and pushing image..."
+echo "🔨 Building and pushing image → ${PROJECT}..."
 gcloud builds submit . \
   --tag="${IMAGE}" \
   --project="${PROJECT}"
@@ -27,7 +32,7 @@ gcloud run jobs update "${JOB}" \
   --task-timeout=3600 \
   --max-retries=2 \
   --set-secrets="SHOPIFY_STORE=shopify-store:latest,SHOPIFY_ACCESS_TOKEN=shopify-access-token:latest" \
-  --set-env-vars="BQ_PROJECT=terra-analytics-dev" \
+  --set-env-vars="BQ_PROJECT=${PROJECT}" \
   2>/dev/null || \
 gcloud run jobs create "${JOB}" \
   --image="${IMAGE}" \
@@ -39,7 +44,7 @@ gcloud run jobs create "${JOB}" \
   --task-timeout=3600 \
   --max-retries=2 \
   --set-secrets="SHOPIFY_STORE=shopify-store:latest,SHOPIFY_ACCESS_TOKEN=shopify-access-token:latest" \
-  --set-env-vars="BQ_PROJECT=terra-analytics-dev"
+  --set-env-vars="BQ_PROJECT=${PROJECT}"
 
 echo "⏰ Creating/updating Cloud Scheduler..."
 gcloud scheduler jobs update http "schedule-${JOB}" \
@@ -60,4 +65,4 @@ gcloud scheduler jobs create http "schedule-${JOB}" \
   --message-body="{}" \
   --oauth-service-account-email="${SA}"
 
-echo "✅ Done — ${JOB} scheduled daily at 6am PT → terra-analytics-dev"
+echo "✅ Done — ${JOB} scheduled daily at 6am PT → ${PROJECT}"
