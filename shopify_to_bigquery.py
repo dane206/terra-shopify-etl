@@ -648,6 +648,25 @@ def run_orders_incremental():
         load_to_bq("shopify_orders", orders, ORDERS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+def run_transactions(mode):
+    import shopify_transactions as txn
+    print("\n💳 Fetching transactions (REST)...")
+    since   = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ") if mode == "incremental" else None
+    bq_mode = bigquery.WriteDisposition.WRITE_APPEND if mode == "incremental" else bigquery.WriteDisposition.WRITE_TRUNCATE
+    rows    = txn.run(since)
+    print("\n💾 Loading transactions...")
+    txn.load_to_bq(rows, bq_mode)
+
+def run_discount_catalog():
+    import shopify_discount_catalog as dc
+    print("\n🏷  Fetching discount catalog (GraphQL Bulk)...")
+    url     = dc.run_bulk_operation()
+    objects = dc.download_jsonl(url)
+    rows    = dc.parse_objects(objects)
+    print(f"  {len(rows):,} discounts")
+    print("\n💾 Loading discount catalog...")
+    dc.load_to_bq(rows)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["backfill", "incremental"], default="incremental")
@@ -660,6 +679,8 @@ def main():
         run_orders_incremental()
     run_customers()
     run_products()
+    run_transactions(args.mode)
+    run_discount_catalog()
     print("\n✅ ETL complete")
 
 if __name__ == "__main__":
