@@ -71,9 +71,10 @@ DISCOUNT_CATALOG_SCHEMA = [
 ]
 
 # ── GraphQL Bulk Query ────────────────────────────────────────────────────────
-# Fetches all DiscountCodeBasic, DiscountCodeBxGy, DiscountCodeFreeShipping
-# and DiscountAutomaticBasic, DiscountAutomaticBxGy, DiscountAutomaticFreeShipping
-# via the discountNodes bulk query (2024-01+)
+# Field names verified against Shopify GraphQL Admin API 2025-04:
+#   - DiscountCodeBxgy (not BxGy)
+#   - DiscountAutomaticBxgy (not BxGy)
+#   - asyncUsageCount (not usageCount) on DiscountRedeemCode
 DISCOUNTS_BULK_QUERY = """{
   discountNodes {
     edges {
@@ -82,15 +83,9 @@ DISCOUNTS_BULK_QUERY = """{
         discount {
           __typename
           ... on DiscountCodeBasic {
-            title
-            status
-            startsAt
-            endsAt
-            createdAt
-            updatedAt
-            usageLimit
-            appliesOncePerCustomer
-            codes(first: 1) { edges { node { code usageCount } } }
+            title status startsAt endsAt createdAt updatedAt
+            usageLimit appliesOncePerCustomer
+            codes(first: 1) { edges { node { code asyncUsageCount } } }
             customerSelection { __typename ... on DiscountCustomerAll { allCustomers } }
             minimumRequirement {
               ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount } }
@@ -106,15 +101,9 @@ DISCOUNTS_BULK_QUERY = """{
             combinesWith { orderDiscounts productDiscounts shippingDiscounts }
           }
           ... on DiscountCodeFreeShipping {
-            title
-            status
-            startsAt
-            endsAt
-            createdAt
-            updatedAt
-            usageLimit
-            appliesOncePerCustomer
-            codes(first: 1) { edges { node { code usageCount } } }
+            title status startsAt endsAt createdAt updatedAt
+            usageLimit appliesOncePerCustomer
+            codes(first: 1) { edges { node { code asyncUsageCount } } }
             customerSelection { __typename ... on DiscountCustomerAll { allCustomers } }
             minimumRequirement {
               ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount } }
@@ -122,26 +111,15 @@ DISCOUNTS_BULK_QUERY = """{
             }
             combinesWith { orderDiscounts productDiscounts shippingDiscounts }
           }
-          ... on DiscountCodeBxGy {
-            title
-            status
-            startsAt
-            endsAt
-            createdAt
-            updatedAt
-            usageLimit
-            appliesOncePerCustomer
-            codes(first: 1) { edges { node { code usageCount } } }
+          ... on DiscountCodeBxgy {
+            title status startsAt endsAt createdAt updatedAt
+            usageLimit appliesOncePerCustomer
+            codes(first: 1) { edges { node { code asyncUsageCount } } }
             customerSelection { __typename ... on DiscountCustomerAll { allCustomers } }
             combinesWith { orderDiscounts productDiscounts shippingDiscounts }
           }
           ... on DiscountAutomaticBasic {
-            title
-            status
-            startsAt
-            endsAt
-            createdAt
-            updatedAt
+            title status startsAt endsAt createdAt updatedAt
             minimumRequirement {
               ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount } }
               ... on DiscountMinimumQuantity { greaterThanOrEqualToQuantity }
@@ -156,25 +134,15 @@ DISCOUNTS_BULK_QUERY = """{
             combinesWith { orderDiscounts productDiscounts shippingDiscounts }
           }
           ... on DiscountAutomaticFreeShipping {
-            title
-            status
-            startsAt
-            endsAt
-            createdAt
-            updatedAt
+            title status startsAt endsAt createdAt updatedAt
             minimumRequirement {
               ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount } }
               ... on DiscountMinimumQuantity { greaterThanOrEqualToQuantity }
             }
             combinesWith { orderDiscounts productDiscounts shippingDiscounts }
           }
-          ... on DiscountAutomaticBxGy {
-            title
-            status
-            startsAt
-            endsAt
-            createdAt
-            updatedAt
+          ... on DiscountAutomaticBxgy {
+            title status startsAt endsAt createdAt updatedAt
             combinesWith { orderDiscounts productDiscounts shippingDiscounts }
           }
         }
@@ -237,20 +205,18 @@ def parse_objects(objects):
     rows = []
     for obj in objects:
         if "__parentId" in obj:
-            continue  # skip child nodes (codes edges etc)
+            continue
 
         node_id  = obj.get("id")
         discount = obj.get("discount") or {}
         typename = discount.get("__typename", "")
 
-        # code (first code for code-based discounts)
-        codes = discount.get("codes") or {}
-        code_edges = (codes.get("edges") or [])
+        codes      = discount.get("codes") or {}
+        code_edges = codes.get("edges") or []
         first_code = code_edges[0]["node"] if code_edges else {}
         code       = first_code.get("code")
-        times_used = first_code.get("usageCount")
+        times_used = first_code.get("asyncUsageCount")
 
-        # value
         cg    = discount.get("customerGets") or {}
         val   = cg.get("value") or {}
         items = cg.get("items") or {}
@@ -268,24 +234,15 @@ def parse_objects(objects):
             value_type = None
             value      = None
 
-        # target type
-        if "FreeShipping" in typename:
-            target_type = "shipping_line"
-        elif items.get("__typename") == "AllDiscountItems":
-            target_type = "line_item"
-        else:
-            target_type = "line_item"
+        target_type = "shipping_line" if "FreeShipping" in typename else "line_item"
 
-        # minimum requirement
-        min_req  = discount.get("minimumRequirement") or {}
-        min_amt  = f((min_req.get("greaterThanOrEqualToSubtotal") or {}).get("amount"))
-        min_qty  = min_req.get("greaterThanOrEqualToQuantity")
+        min_req = discount.get("minimumRequirement") or {}
+        min_amt = f((min_req.get("greaterThanOrEqualToSubtotal") or {}).get("amount"))
+        min_qty = min_req.get("greaterThanOrEqualToQuantity")
 
-        # customer selection
         cs = discount.get("customerSelection") or {}
         customer_selection = "all" if cs.get("allCustomers") else cs.get("__typename", "specific")
 
-        # combines with
         cw = discount.get("combinesWith") or {}
 
         rows.append({
@@ -297,7 +254,7 @@ def parse_objects(objects):
             "value_type":                      value_type,
             "value":                           value,
             "target_type":                     target_type,
-            "allocation_method":               "across" if "BxGy" in typename else "each",
+            "allocation_method":               "across" if "Bxgy" in typename else "each",
             "minimum_purchase_amount":         min_amt,
             "minimum_quantity":                int(min_qty) if min_qty is not None else None,
             "customer_selection":              customer_selection,
