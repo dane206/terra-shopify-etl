@@ -124,8 +124,9 @@ REFUNDS_SCHEMA = [
 
 DISCOUNTS_SCHEMA = [
     SF("order_id","STRING"), SF("order_name","STRING"), SF("order_created_at","TIMESTAMP"),
-    SF("discount_type","STRING"), SF("code","STRING"), SF("amount","FLOAT"),
-    SF("type","STRING"),
+    SF("discount_type","STRING"), SF("code","STRING"), SF("title","STRING"),
+    SF("value","FLOAT"), SF("value_type","STRING"), SF("allocation_method","STRING"),
+    SF("target_type","STRING"), SF("target_selection","STRING"),
 ]
 
 CUSTOMERS_SCHEMA = [
@@ -278,8 +279,12 @@ def transform_discount(dc, order_id, order_name, order_created_at):
         "order_created_at":  order_created_at,
         "discount_type":     "discount_code",
         "code":              dc.get("code"),
-        "amount":            f(dc.get("amount")),
-        "type":              dc.get("type"),
+        "title":             None,
+        "value":             f(dc.get("amount")),
+        "value_type":        dc.get("type"),
+        "allocation_method": None,
+        "target_type":       None,
+        "target_selection":  None,
     }
 
 # ── Monthly chunk fetcher ─────────────────────────────────────────────────────
