@@ -442,6 +442,7 @@ ORDERS_SCHEMA = [
     SF("customer_locale","STRING"), SF("customer_accepts_marketing","BOOLEAN"),
     SF("source_name","STRING"), SF("tags","STRING"), SF("note","STRING"), SF("test","BOOLEAN"),
     SF("landing_site","STRING"), SF("client_ip","STRING"), SF("payment_gateway_names","STRING"),
+    SF("referring_site","STRING"), SF("cart_token","STRING"),
     SF("billing_first_name","STRING"), SF("billing_last_name","STRING"),
     SF("billing_address1","STRING"), SF("billing_city","STRING"),
     SF("billing_province","STRING"), SF("billing_province_code","STRING"),
@@ -461,6 +462,7 @@ LINE_ITEMS_SCHEMA = [
     SF("name","STRING"), SF("vendor","STRING"), SF("quantity","INTEGER"),
     SF("price","FLOAT"), SF("total_discount","FLOAT"),
     SF("gift_card","BOOLEAN"), SF("taxable","BOOLEAN"), SF("requires_shipping","BOOLEAN"),
+    SF("fulfillment_status","STRING"),
 ]
 
 DISCOUNTS_SCHEMA = [
@@ -474,6 +476,7 @@ REFUNDS_SCHEMA = [
     SF("refund_id","STRING"), SF("order_id","STRING"), SF("order_name","STRING"),
     SF("created_at","TIMESTAMP"), SF("note","STRING"),
     SF("refund_line_item_id","STRING"), SF("line_item_id","STRING"),
+    SF("product_id","STRING"), SF("variant_id","STRING"), SF("sku","STRING"),
     SF("quantity","INTEGER"), SF("restock_type","STRING"),
     SF("subtotal","FLOAT"), SF("total_tax","FLOAT"),
 ]
@@ -488,7 +491,6 @@ CUSTOMERS_SCHEMA = [
     SF("note","STRING"), SF("default_address1","STRING"), SF("default_city","STRING"),
     SF("default_province","STRING"), SF("default_province_code","STRING"),
     SF("default_country","STRING"), SF("default_country_code","STRING"), SF("default_zip","STRING"),
-    SF("_loaded_at","TIMESTAMP"),
 ]
 
 PRODUCTS_SCHEMA = [
@@ -496,7 +498,6 @@ PRODUCTS_SCHEMA = [
     SF("product_type","STRING"), SF("vendor","STRING"), SF("status","STRING"),
     SF("tags","STRING"), SF("created_at","TIMESTAMP"), SF("updated_at","TIMESTAMP"),
     SF("published_at","TIMESTAMP"), SF("body_html","STRING"),
-    SF("_loaded_at","TIMESTAMP"),
 ]
 
 VARIANTS_SCHEMA = [
@@ -507,7 +508,6 @@ VARIANTS_SCHEMA = [
     SF("inventory_management","STRING"), SF("inventory_policy","STRING"),
     SF("fulfillment_service","STRING"), SF("taxable","BOOLEAN"), SF("barcode","STRING"),
     SF("requires_shipping","BOOLEAN"), SF("created_at","TIMESTAMP"), SF("updated_at","TIMESTAMP"),
-    SF("_loaded_at","TIMESTAMP"),
 ]
 
 # ── REST paginator (customers, products, incremental orders) ──────────────────
@@ -528,7 +528,7 @@ def rest_paginate(endpoint, key, params=None):
         p = None
     print()
 
-def xform_customer(c, loaded_at):
+def xform_customer(c):
     da  = c.get("default_address") or {}
     emc = c.get("email_marketing_consent") or {}
     smc = c.get("sms_marketing_consent") or {}
@@ -543,20 +543,19 @@ def xform_customer(c, loaded_at):
         "default_address1": da.get("address1"), "default_city": da.get("city"),
         "default_province": da.get("province"), "default_province_code": da.get("province_code"),
         "default_country": da.get("country"), "default_country_code": da.get("country_code"),
-        "default_zip": da.get("zip"), "_loaded_at": loaded_at,
+        "default_zip": da.get("zip"),
     }
 
-def xform_product(p, loaded_at):
+def xform_product(p):
     return {
         "product_id": s(p.get("id")), "title": p.get("title"), "handle": p.get("handle"),
         "product_type": p.get("product_type"), "vendor": p.get("vendor"),
         "status": p.get("status"), "tags": p.get("tags"),
         "created_at": p.get("created_at"), "updated_at": p.get("updated_at"),
         "published_at": p.get("published_at"), "body_html": p.get("body_html"),
-        "_loaded_at": loaded_at,
     }
 
-def xform_variant(v, pid, loaded_at):
+def xform_variant(v, pid):
     return {
         "variant_id": s(v.get("id")), "product_id": s(pid), "title": v.get("title"),
         "option1": v.get("option1"), "option2": v.get("option2"), "option3": v.get("option3"),
@@ -569,7 +568,6 @@ def xform_variant(v, pid, loaded_at):
         "taxable": v.get("taxable"), "barcode": v.get("barcode"),
         "requires_shipping": v.get("requires_shipping"),
         "created_at": v.get("created_at"), "updated_at": v.get("updated_at"),
-        "_loaded_at": loaded_at,
     }
 
 # ── Runners ───────────────────────────────────────────────────────────────────
@@ -593,18 +591,16 @@ def run_refunds_bulk():
     load_to_bq("shopify_refunds", refunds, REFUNDS_SCHEMA)
 
 def run_customers(mode):
-    loaded_at = datetime.now(timezone.utc).isoformat()
     params = {}
     if mode == "incremental":
         params["updated_at_min"] = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         print(f"\n👥 Fetching customers updated since {params['updated_at_min']}...")
     else:
         print("\n👥 Fetching all customers (backfill)...")
-    rows = [xform_customer(c, loaded_at) for c in rest_paginate("customers.json", "customers", params)]
+    rows = [xform_customer(c) for c in rest_paginate("customers.json", "customers", params)]
     load_to_bq("shopify_customers", rows, CUSTOMERS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
 
 def run_products(mode):
-    loaded_at = datetime.now(timezone.utc).isoformat()
     params = {}
     if mode == "incremental":
         params["updated_at_min"] = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -613,9 +609,9 @@ def run_products(mode):
         print("\n🛍️  Fetching all products (backfill)...")
     products, variants = [], []
     for p in rest_paginate("products.json", "products", params):
-        products.append(xform_product(p, loaded_at))
+        products.append(xform_product(p))
         for v in (p.get("variants") or []):
-            variants.append(xform_variant(v, p.get("id"), loaded_at))
+            variants.append(xform_variant(v, p.get("id")))
     print(f"  products: {len(products):,} | variants: {len(variants):,}")
     load_to_bq("shopify_products", products, PRODUCTS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
     load_to_bq("shopify_variants", variants, VARIANTS_SCHEMA, bigquery.WriteDisposition.WRITE_APPEND)
@@ -653,6 +649,8 @@ def run_orders_incremental():
             "landing_site": o.get("landing_site"),
             "client_ip": o.get("browser_ip"),
             "payment_gateway_names": json.dumps(o.get("payment_gateway_names") or []),
+            "referring_site": o.get("referring_site"),
+            "cart_token": o.get("cart_token"),
             "billing_first_name": ba.get("first_name"), "billing_last_name": ba.get("last_name"),
             "billing_address1": ba.get("address1"), "billing_city": ba.get("city"),
             "billing_province": ba.get("province"), "billing_province_code": ba.get("province_code"),
@@ -676,6 +674,7 @@ def run_orders_incremental():
                 "total_discount": f(li.get("total_discount")),
                 "gift_card": li.get("gift_card"), "taxable": li.get("taxable"),
                 "requires_shipping": li.get("requires_shipping"),
+                "fulfillment_status": li.get("fulfillment_status"),
             })
         for da in (o.get("discount_applications") or []):
             discounts.append({
@@ -693,6 +692,9 @@ def run_orders_incremental():
                     "created_at": r.get("created_at"), "note": r.get("note"),
                     "refund_line_item_id": s(rli.get("id")),
                     "line_item_id": s((rli.get("line_item") or {}).get("id") or rli.get("line_item_id")),
+                    "product_id": s((rli.get("line_item") or {}).get("product_id")),
+                    "variant_id": s((rli.get("line_item") or {}).get("variant_id")),
+                    "sku": (rli.get("line_item") or {}).get("sku"),
                     "quantity": rli.get("quantity"), "restock_type": rli.get("restock_type"),
                     "subtotal": f(rli.get("subtotal")), "total_tax": f(rli.get("total_tax")),
                 })
