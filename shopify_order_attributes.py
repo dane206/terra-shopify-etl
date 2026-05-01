@@ -10,6 +10,7 @@ Table produced:
 
 Run:
   python shopify_order_attributes.py
+  BQ_PROJECT=terra-analytics-dev python shopify_order_attributes.py
 
 Requirements:
   pip install requests google-cloud-bigquery
@@ -21,13 +22,14 @@ from requests.adapters import HTTPAdapter, Retry
 from google.cloud import bigquery
 import configparser
 
-config = configparser.ConfigParser()
-config.read(os.path.join(os.path.dirname(__file__), "config.ini"))
+_cfg = configparser.ConfigParser()
+_cfg.read(os.path.join(os.path.dirname(__file__), "config.ini"))
+_shopify = _cfg["shopify"] if _cfg.has_section("shopify") else {}
 
-SHOPIFY_STORE = config["shopify"]["store"]
-ACCESS_TOKEN  = config["shopify"]["access_token"]
-API_VERSION   = config["shopify"].get("api_version", "2025-04")
-BQ_PROJECT    = "terra-analytics-prod"
+SHOPIFY_STORE = os.environ.get("SHOPIFY_STORE") or _shopify.get("store", "")
+ACCESS_TOKEN  = os.environ.get("SHOPIFY_ACCESS_TOKEN") or _shopify.get("access_token", "")
+API_VERSION   = os.environ.get("SHOPIFY_API_VERSION") or _shopify.get("api_version", "2026-01")
+BQ_PROJECT    = os.environ.get("BQ_PROJECT", "terra-analytics-prod")
 BQ_DATASET    = "sources"
 GRAPHQL_URL   = f"https://{SHOPIFY_STORE}/admin/api/{API_VERSION}/graphql.json"
 
@@ -162,14 +164,12 @@ def parse_objects(objects):
 
     rows = []
     for obj in objects:
-        # skip child nodes — only process top-level order nodes
         if "__parentId" in obj or "name" not in obj:
             continue
 
         order    = obj
         order_id = obj["id"]
 
-        # customAttributes is a flat inline array on the order node
         attrs = {}
         for attr in (obj.get("customAttributes") or []):
             k = attr.get("key")

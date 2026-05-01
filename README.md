@@ -32,7 +32,7 @@ Add credentials to `config.ini` (gitignored):
 [shopify]
 store        = terra-health-essentials.myshopify.com
 access_token = YOUR_ACCESS_TOKEN
-api_version  = 2025-04
+api_version  = 2026-01
 ```
 
 ```bash

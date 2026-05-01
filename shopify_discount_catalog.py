@@ -30,7 +30,7 @@ _shopify = _cfg["shopify"] if _cfg.has_section("shopify") else {}
 
 SHOPIFY_STORE = os.environ.get("SHOPIFY_STORE") or _shopify.get("store", "")
 ACCESS_TOKEN  = os.environ.get("SHOPIFY_ACCESS_TOKEN") or _shopify.get("access_token", "")
-API_VERSION   = os.environ.get("SHOPIFY_API_VERSION") or _shopify.get("api_version", "2025-04")
+API_VERSION   = os.environ.get("SHOPIFY_API_VERSION") or _shopify.get("api_version", "2026-01")
 BQ_PROJECT    = os.environ.get("BQ_PROJECT", "terra-analytics-prod")
 BQ_DATASET    = "sources"
 GRAPHQL_URL   = f"https://{SHOPIFY_STORE}/admin/api/{API_VERSION}/graphql.json"

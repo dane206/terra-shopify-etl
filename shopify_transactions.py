@@ -27,7 +27,7 @@ _shopify = _cfg["shopify"] if _cfg.has_section("shopify") else {}
 
 SHOPIFY_STORE = os.environ.get("SHOPIFY_STORE") or _shopify.get("store", "")
 ACCESS_TOKEN  = os.environ.get("SHOPIFY_ACCESS_TOKEN") or _shopify.get("access_token", "")
-API_VERSION   = os.environ.get("SHOPIFY_API_VERSION") or _shopify.get("api_version", "2025-04")
+API_VERSION   = os.environ.get("SHOPIFY_API_VERSION") or _shopify.get("api_version", "2026-01")
 BQ_PROJECT    = os.environ.get("BQ_PROJECT", "terra-analytics-prod")
 BQ_DATASET    = "sources"
 REST_URL      = f"https://{SHOPIFY_STORE}/admin/api/{API_VERSION}"
@@ -127,12 +127,15 @@ def load_to_bq(rows, mode):
 # ── Runners ───────────────────────────────────────────────────────────────────
 def get_last_transaction_time():
     """Query BQ for the latest transaction timestamp to use as incremental start."""
-    query = f"SELECT FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', MAX(created_at)) AS latest FROM `{BQ_PROJECT}.{BQ_DATASET}.shopify_transactions`"
-    result = list(bq.query(query).result())
-    latest = result[0].latest if result else None
-    if latest:
-        print(f"  Resuming from last transaction: {latest}")
-    return latest
+    try:
+        query = f"SELECT FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', MAX(created_at)) AS latest FROM `{BQ_PROJECT}.{BQ_DATASET}.shopify_transactions`"
+        result = list(bq.query(query).result())
+        latest = result[0].latest if result else None
+        if latest:
+            print(f"  Resuming from last transaction: {latest}")
+        return latest
+    except Exception:
+        return None
 
 def run(since=None):
     params = {"status": "any"}
