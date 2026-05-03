@@ -17,6 +17,7 @@ Runs daily at 6am PT as a Cloud Run Job in `terra-analytics-dev`.
 | `shopify_variants` | REST | TRUNCATE |
 | `shopify_transactions` | REST (per-order) | TRUNCATE / APPEND |
 | `shopify_discount_catalog` | GraphQL Bulk | TRUNCATE |
+| `shopify_order_attributes` | GraphQL Bulk | TRUNCATE |
 
 ## Local development
 
@@ -41,6 +42,9 @@ python shopify_to_bigquery.py --mode incremental
 
 # Backfill — full history via Bulk GraphQL, TRUNCATE
 python shopify_to_bigquery.py --mode backfill
+
+# Order attributes — Terra attribution data (terra_ctx, UTMs, GA IDs)
+python shopify_order_attributes.py
 ```
 
 ## Cloud Run deployment
