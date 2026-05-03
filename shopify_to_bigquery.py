@@ -727,6 +727,11 @@ def run_discount_catalog():
     print("\n💾 Loading discount catalog...")
     dc.load_to_bq(rows)
 
+def run_order_attributes():
+    import shopify_order_attributes as oa
+    print("\n🏷  Fetching order attributes (Terra attribution data)...")
+    oa.main()
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["backfill", "incremental"], default="incremental")
@@ -741,6 +746,7 @@ def main():
     run_products(args.mode)
     run_transactions(args.mode)
     run_discount_catalog()
+    run_order_attributes()
     print("\n✅ ETL complete")
 
 if __name__ == "__main__":
