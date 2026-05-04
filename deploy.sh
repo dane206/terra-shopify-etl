@@ -31,11 +31,11 @@ echo "🐳 Image       : $IMAGE"
 echo "🚀 Job         : $JOB"
 echo ""
 
-echo "🔨 Building image..."
-docker build -t "$IMAGE" .
-
-echo "📤 Pushing image..."
-docker push "$IMAGE"
+echo "🔨 Building and pushing image via Cloud Build..."
+gcloud builds submit \
+  --tag "$IMAGE" \
+  --project "$PROJECT" \
+  .
 
 echo "🚀 Deploying Cloud Run job..."
 gcloud run jobs deploy "$JOB" \
