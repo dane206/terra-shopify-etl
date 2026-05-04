@@ -142,7 +142,7 @@ def run(since=None):
     if since:
         params["updated_at_min"] = since
 
-    print("  Fetching orders...")
+    print(f"  Fetching orders updated since {since}...")
     orders = list(rest_paginate("orders.json", "orders", params))
     print(f"  {len(orders):,} orders — fetching transactions...")
 
@@ -168,8 +168,9 @@ def main():
     print(f"🚀 Shopify Transactions — mode: {args.mode} → {BQ_PROJECT}.{BQ_DATASET}.shopify_transactions")
 
     if args.mode == "incremental":
-        since = get_last_transaction_time() or (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        since = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         mode  = bigquery.WriteDisposition.WRITE_APPEND
+        print(f"  Incremental: orders updated since {since}")
     else:
         since = None
         mode  = bigquery.WriteDisposition.WRITE_TRUNCATE

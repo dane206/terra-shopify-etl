@@ -84,9 +84,11 @@ SCHEMA = [
     SF("raw_attributes",              "STRING"),
 ]
 
-# ── Bulk Query ────────────────────────────────────────────────────────────────
-BULK_QUERY = """{
-  orders {
+# ── Bulk Query ────────────────────────────────────────────────────────────────────
+def build_bulk_query(since=None):
+    filter_clause = f', query: "updated_at:>={since}"' if since else ""
+    return """{
+  orders""" + filter_clause + """ {
     edges {
       node {
         id
@@ -112,9 +114,10 @@ def cancel_existing():
         session.post(GRAPHQL_URL, json={"query": cancel}, timeout=30)
         time.sleep(5)
 
-def run_bulk():
+def run_bulk(since=None):
     cancel_existing()
-    mutation = 'mutation { bulkOperationRunQuery(query: """' + BULK_QUERY + '""") { bulkOperation { id status } userErrors { field message } } }'
+    query = build_bulk_query(since)
+    mutation = 'mutation { bulkOperationRunQuery(query: """' + query + '""") { bulkOperation { id status } userErrors { field message } } }'
     resp = session.post(GRAPHQL_URL, json={"query": mutation}, timeout=30)
     resp.raise_for_status()
     data = resp.json()
@@ -228,11 +231,11 @@ def parse_objects(objects):
     return rows
 
 # ── Load ──────────────────────────────────────────────────────────────────────
-def load_to_bq(rows):
+def load_to_bq(rows, mode=bigquery.WriteDisposition.WRITE_APPEND):
     table_id = f"{BQ_PROJECT}.{BQ_DATASET}.shopify_order_attributes"
     job = bq.load_table_from_json(rows, table_id, job_config=bigquery.LoadJobConfig(
         schema=SCHEMA,
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        write_disposition=mode,
         ignore_unknown_values=True,
     ))
     job.result()
@@ -240,9 +243,11 @@ def load_to_bq(rows):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"🚀 Shopify Order Attributes → {BQ_PROJECT}.{BQ_DATASET}.shopify_order_attributes")
-    print("📦 Running bulk operation...")
-    url = run_bulk()
+    print(f"📦 Running bulk operation (orders updated since {since})...")
+    url = run_bulk(since)
     objects = download_jsonl(url)
     print("🔧 Parsing attributes...")
     rows = parse_objects(objects)
